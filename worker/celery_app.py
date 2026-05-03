@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
 
 from config import settings
 
@@ -73,16 +74,21 @@ app.conf.update(
 )
 
 
-@app.on_after_configure.connect
+@worker_ready.connect
 def bootstrap(sender, **_):
     """
-    On first connection, ensure schema exists and kick off an immediate
-    end-to-end run so the DB has data without waiting for Beat.
+    Fires when the worker is fully started and ready to accept tasks.
+    Initializes the Postgres schema and kicks off an immediate end-to-end
+    ETL so the DB has data without waiting for Beat's first scheduled tick.
     """
     from db import init_schema
+
     try:
         init_schema()
+        print("[bootstrap] schema initialized")
     except Exception as exc:
-        print(f"[bootstrap] schema init warning: {exc}")
+        print(f"[bootstrap] schema init FAILED: {exc}")
+        return  # don't trigger pipeline if schema isn't ready
 
-    sender.send_task("tasks.pipeline.run_full_pipeline")
+    sender.app.send_task("tasks.pipeline.run_full_pipeline")
+    print("[bootstrap] queued initial run_full_pipeline")
