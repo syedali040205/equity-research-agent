@@ -13,7 +13,7 @@ def _writer_raw(state: ResearchState) -> str:
     news = state.get("news") or []
     price = state.get("price", {})
     headlines = [n.get("title", "") for n in news[:3]]
-    p = {k: price.get(k) for k in ("current_price", "market_cap", "pe_ratio", "week_52_high", "week_52_low") if price.get(k) is not None}
+    p = {k: price.get(k) for k in ("current_price", "market_cap", "pe_ratio", "eps", "week_52_high", "week_52_low") if price.get(k) is not None}
     return json.dumps({"price": p, "headlines": headlines}, default=str)
 
 

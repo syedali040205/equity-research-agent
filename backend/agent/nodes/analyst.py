@@ -23,7 +23,7 @@ def _build_raw_data(state: ResearchState) -> str:
 
     payload = {
         "company": _nonnull(company, ("ticker", "name", "sector", "industry")),
-        "price": _nonnull(price, ("current_price", "market_cap", "pe_ratio", "forward_pe", "week_52_high", "week_52_low", "beta")),
+        "price": _nonnull(price, ("current_price", "market_cap", "pe_ratio", "forward_pe", "eps", "week_52_high", "week_52_low", "beta")),
         "financials": _nonnull(latest_fin, ("period_end", "revenue", "net_income", "operating_income", "free_cash_flow", "total_debt", "total_equity")) if latest_fin else {},
         "metrics": _nonnull(metrics, ("revenue_yoy_growth_pct", "gross_margin_pct", "operating_margin_pct", "net_margin_pct", "debt_to_equity", "fcf_margin_pct")),
         "news_count": len(state.get("news") or []),
