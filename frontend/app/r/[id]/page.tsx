@@ -1,5 +1,6 @@
 "use client";
 
+import { API } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import TopNav from "@/components/TopNav";
@@ -13,6 +14,8 @@ import PriceChart from "@/components/PriceChart";
 import SentimentBadge from "@/components/SentimentBadge";
 import ChatPanel from "@/components/ChatPanel";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
+import PeerComparison from "@/components/PeerComparison";
+import FilingsPanel from "@/components/FilingsPanel";
 import { ResearchResult } from "@/lib/types";
 
 export default function SharePage() {
@@ -23,11 +26,11 @@ export default function SharePage() {
 
   useEffect(() => {
     if (!id) return;
-    fetch(`http://localhost:8000/api/research/${id}`)
+    fetch(`${API}/api/research/${id}`)
       .then(r => { if (!r.ok) throw new Error("Not found"); return r.json(); })
       .then(data => {
         setResult(data);
-        return fetch(`http://localhost:8000/api/tools/price/${data.ticker}`);
+        return fetch(`${API}/api/tools/price/${data.ticker}`);
       })
       .then(r => r.json())
       .then(p => {
@@ -90,7 +93,7 @@ export default function SharePage() {
             </span>
           </div>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-dim)", marginTop: 3 }}>
-            {result.generated_at
+            {(result as any).generated_at
               ? `GENERATED ${new Date((result as any).generated_at).toLocaleString()}`
               : `RES ID: ${result.research_id}`}
             {" · "}{result.sources_cited} SOURCES · {((result.duration_ms || 0) / 1000).toFixed(1)}s
@@ -110,6 +113,7 @@ export default function SharePage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <PriceChart ticker={result.ticker} />
           {marketData && <MarketDataPanel data={marketData} />}
+          <PeerComparison ticker={result.ticker} />
           {result.sentiment?.label && (
             <div style={{ padding: "10px 16px", background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
               <SentimentBadge sentiment={result.sentiment} />
@@ -127,6 +131,7 @@ export default function SharePage() {
           <ChatPanel researchId={result.research_id} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <FilingsPanel ticker={result.ticker} />
           <div style={{ padding: "12px 16px", background: "var(--bg-secondary)", border: "1px solid var(--amber-dim)" }}>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--amber)", letterSpacing: "0.12em", marginBottom: 4 }}>
               SHARE LINK

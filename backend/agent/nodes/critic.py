@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from agent.llm import invoke_json, make_llm
+from agent.llm import invoke_json, make_llm_quality as make_llm
 from agent.observability import log_agent_call
 from agent.prompts import CRITIC_PROMPT
 from agent.state import ResearchState
@@ -21,7 +21,7 @@ def critic(state: ResearchState) -> dict:
         analysis=json.dumps(state.get("analysis", {}), indent=2),
     )
 
-    llm = make_llm(num_predict=600)
+    llm = make_llm(num_predict=1400)
     try:
         critique, telem = invoke_json(llm, prompt)
         ok, err = True, None

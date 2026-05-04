@@ -46,6 +46,14 @@ export interface Sentiment {
   summary: string;
 }
 
+export interface BearAnalysis {
+  bear_thesis: string;
+  overvaluation_argument: string;
+  key_risks: string[];
+  bull_counterarguments_rebutted: string;
+  bear_confidence: number;
+}
+
 export interface ResearchResult {
   research_id: string;
   ticker: string;
@@ -55,6 +63,7 @@ export interface ResearchResult {
   company: Company | string;
   brief: Brief;
   analysis: Analysis;
+  bear_analysis?: BearAnalysis;
   sentiment?: Sentiment;
   critique: Critique;
   trace: TraceNode[];

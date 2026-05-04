@@ -28,6 +28,7 @@ from __future__ import annotations
 from langgraph.graph import END, StateGraph
 
 from agent.nodes.analyst import analyst
+from agent.nodes.bear_analyst import bear_analyst
 from agent.nodes.critic import critic, increment_retry, route_after_critic
 from agent.nodes.introspect import introspect
 from agent.nodes.researchers import (
@@ -48,6 +49,7 @@ def build_graph():
     g.add_node("research_fundamentals", research_fundamentals)
     g.add_node("research_qualitative", research_qualitative)
     g.add_node("analyst", analyst)
+    g.add_node("bear_analyst", bear_analyst)
     g.add_node("news_sentiment", sentiment)
     g.add_node("critic", critic)
     g.add_node("retry_analyst", increment_retry)
@@ -60,13 +62,15 @@ def build_graph():
     g.add_edge("introspect", "research_fundamentals")
     g.add_edge("introspect", "research_qualitative")
 
-    # Fan-in → fan-out: researchers → analyst AND sentiment (parallel)
+    # researchers → analyst, bear_analyst, news_sentiment (all parallel)
     for src in ("research_market", "research_fundamentals", "research_qualitative"):
         g.add_edge(src, "analyst")
+        g.add_edge(src, "bear_analyst")
         g.add_edge(src, "news_sentiment")
 
-    # Fan-in: both analyst and news_sentiment must finish before critic
+    # Fan-in: all three must finish before critic
     g.add_edge("analyst", "critic")
+    g.add_edge("bear_analyst", "critic")
     g.add_edge("news_sentiment", "critic")
 
     g.add_conditional_edges(

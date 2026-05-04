@@ -1,92 +1,116 @@
-"""LLM prompts. Use placeholders in examples so model fills real data."""
+"""LLM prompts — Groq/llama-3.1-8b-instant. No hallucination of missing data."""
 
-SENTIMENT_PROMPT = """You are a financial news sentiment analyst. Score the NEWS below.
+SENTIMENT_PROMPT = """You are a financial news sentiment analyst.
 
-NEWS HEADLINES (most recent first):
+NEWS HEADLINES for {ticker}:
 {headlines}
 
-Respond with this JSON only:
+Output JSON only:
 {{
-  "score": <float from -1.0 (very bearish) to 1.0 (very bullish)>,
-  "label": "<must be exactly: BULLISH or BEARISH or NEUTRAL>",
-  "drivers": ["main positive or negative theme in 6 words", "second driver", "third driver"],
-  "summary": "one sentence describing the overall news tone for {ticker}"
+  "score": <float -1.0 to 1.0>,
+  "label": "<BULLISH or BEARISH or NEUTRAL>",
+  "drivers": ["<theme>", "<theme>", "<theme>"],
+  "summary": "<one sentence on collective news tone for {ticker}>"
 }}
 
-Rules: output valid JSON only, no markdown. label must be BULLISH, BEARISH, or NEUTRAL exactly.
+Rules: JSON only. label must be BULLISH, BEARISH, or NEUTRAL exactly.
 """
 
-ANALYST_PROMPT = """You are a senior equity research analyst. Analyze the DATA and output JSON.
+ANALYST_PROMPT = """You are a senior equity research analyst. Analyze only the DATA provided below.
 
 DATA:
 {raw_data}
 
-CRITIC FEEDBACK TO ADDRESS (empty = first pass):
+CRITIC FEEDBACK TO ADDRESS:
 {critic_feedback}
 
-Respond with this JSON structure. Replace every placeholder with real values from DATA above:
+STRICT RULES — violations will be flagged:
+1. NEVER invent, estimate, or calculate numbers not present in DATA. If pe_ratio is not in DATA, do not mention a P/E ratio.
+2. If revenue/margins/EPS are null or absent, say so directly — do not calculate them from other fields.
+3. Use only sector/industry from DATA["company"] — do not infer competitors not mentioned.
+4. key_metrics must copy exact values from DATA — null if not present.
+
+Your analysis must:
+- State clearly which data IS available and what it tells us
+- State clearly which data IS NOT available and how that limits conviction
+- Be specific about price vs 52w range if those values exist
+
+Output JSON:
 {{
-  "thesis_one_liner": "one sentence investment view based on the actual data",
-  "strengths": ["strength backed by a number from DATA", "another strength from DATA", "third strength from DATA"],
-  "risks": ["risk from DATA", "another risk from DATA", "third risk from DATA"],
+  "thesis_one_liner": "<one sentence investment view based strictly on available data>",
+  "strengths": [
+    "<strength derivable from the DATA — if limited data, say what the price action suggests>",
+    "<second strength or 'Limited data prevents additional strengths'>",
+    "<third strength or note data gap>"
+  ],
+  "risks": [
+    "<risk from DATA — data opacity itself is a valid risk>",
+    "<second risk>",
+    "<third risk>"
+  ],
   "key_metrics": {{
-    "revenue_growth_pct": <use derived_metrics.revenue_yoy_growth_pct from DATA or null>,
-    "net_margin_pct": <use derived_metrics.net_margin_pct from DATA or null>,
-    "pe_ratio": <use price.pe_ratio from DATA or null>,
-    "debt_to_equity": <use derived_metrics.debt_to_equity from DATA or null>
+    "revenue_growth_pct": <copy from DATA metrics.revenue_yoy_growth_pct or null>,
+    "net_margin_pct": <copy from DATA metrics.net_margin_pct or null>,
+    "pe_ratio": <copy from DATA price.pe_ratio or null>,
+    "debt_to_equity": <copy from DATA metrics.debt_to_equity or null>
   }},
-  "market_assessment": "2-3 sentences on current_price, pe_ratio, week_52_high, week_52_low from DATA",
-  "fundamental_assessment": "2-3 sentences on revenue, net_income, margins from DATA",
-  "qualitative_assessment": "2-3 sentences on sector, industry, competitive position from DATA",
-  "overall_assessment": "2-3 sentences synthesizing everything into a clear investment view",
-  "data_gaps": ["list fields that were null or missing in DATA"]
+  "market_assessment": "<what price vs 52w high/low tells us — use exact values from DATA>",
+  "fundamental_assessment": "<what revenue/margins tell us, OR explicitly state these are unavailable and conviction is therefore low>",
+  "qualitative_assessment": "<sector position and news narrative based on available data>",
+  "overall_assessment": "<honest synthesis: what we know, what we don't, and our view with appropriate uncertainty>"
 }}
 
-Rules: output valid JSON only, no markdown, no explanation. Use ONLY numbers from DATA — do not invent values.
+Output JSON only, no markdown.
 """
 
-CRITIC_PROMPT = """You are a fact-checker for equity research. Verify the ANALYSIS against the DATA.
+CRITIC_PROMPT = """You are a fact-checker for equity research.
 
-DATA:
+SOURCE DATA (ground truth):
 {raw_data}
 
 ANALYSIS TO CHECK:
 {analysis}
 
-Respond with this JSON. Replace placeholders with real evaluation of the ANALYSIS above:
+Flag any numbers in the analysis that are NOT present in SOURCE DATA. A number that appears in analysis but not in SOURCE DATA is fabricated — mark as critical.
+
+Output JSON:
 {{
-  "passed": true,
-  "confidence": <integer 0-100 reflecting your confidence in the analysis>,
+  "passed": <true only if no critical or high issues>,
+  "confidence": <integer 0-100>,
   "issues": [
-    {{"description": "describe a specific claim in ANALYSIS that is wrong or unverifiable against DATA", "severity": "high"}},
-    {{"description": "describe another issue", "severity": "medium"}}
+    {{"description": "<specific problem>", "severity": "<critical|high|medium|low>"}}
   ],
-  "recommendation": "one sentence overall verdict on the analysis quality",
-  "verified_count": <count of claims you could verify as correct from DATA>
+  "recommendation": "<one sentence verdict>",
+  "verified_count": <claims verified as correct>
 }}
 
-Rules: output valid JSON only, no markdown. severity must be one of: critical, high, medium, low.
-If no issues found, set issues to empty array [].
+Rules: JSON only. severity: critical=fabricated number, high=unsupported conclusion, medium=minor gap, low=style issue.
+If no issues, set issues to [].
 """
 
-WRITER_PROMPT = """You are a financial writer. Write a research brief for {company_name} ({ticker}).
+WRITER_PROMPT = """Write a research brief for {company_name} ({ticker}).
 
-ANALYSIS:
-{analysis}
+KEY FINDINGS:
+- Thesis: {thesis}
+- Strengths: {strengths}
+- Risks: {risks}
+- Market: {market_assessment}
+- Overall: {overall_assessment}
+- Sentiment: {sentiment_label} (score: {sentiment_score})
+- Price: {price_summary}
 
-DATA:
-{raw_data}
+Style: Bloomberg Intelligence — crisp, specific, no invented numbers.
 
-Respond with this JSON. Write using the ANALYSIS and DATA above — do not invent numbers:
+Output JSON:
 {{
-  "summary": "3 sentences describing the complete investment picture for {ticker} based on the analysis",
-  "investment_thesis": "2-3 sentences explaining the bull case for {ticker} using strengths from ANALYSIS",
-  "risks": ["first risk from ANALYSIS risks list", "second risk", "third risk"],
-  "catalysts": ["near-term catalyst for {ticker}", "second catalyst", "third catalyst"],
-  "recommendation": "<must be exactly BUY or HOLD or SELL based on overall_assessment>",
-  "target_price": <derive from current_price in DATA adjusted for thesis, or null>,
-  "confidence": <decimal 0.0-1.0 based on data completeness and conviction>
+  "summary": "<3 sentences: company, current situation, our view — use only facts from KEY FINDINGS>",
+  "investment_thesis": "<2 sentences: specific bull case from the strengths above>",
+  "risks": ["<risk 1 from findings>", "<risk 2>", "<risk 3>"],
+  "catalysts": ["<realistic near-term catalyst>", "<second>", "<third>"],
+  "recommendation": "<BUY or HOLD or SELL>",
+  "target_price": null,
+  "confidence": <0.0-1.0: lower if key data was missing>
 }}
 
-Rules: output valid JSON only, no markdown. recommendation must be BUY, HOLD, or SELL exactly.
+Rules: JSON only. BUY/HOLD/SELL exactly. Do not invent numbers not in KEY FINDINGS.
 """

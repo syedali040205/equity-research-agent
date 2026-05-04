@@ -8,6 +8,7 @@ interface Props {
 export default function TopNav({ onReset, onHistory }: Props) {
   return (
     <div
+      data-noprint
       style={{
         height: 52,
         background: "var(--bg-secondary)",

@@ -8,7 +8,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
-    LLM_MODEL: str = "llama3.2:3b"
+    LLM_MODEL: str = "llama-3.1-8b-instant"
+    LLM_QUALITY_MODEL: str = "llama-3.1-8b-instant"  # set to llama-3.3-70b-versatile when not rate-limited
+    GROQ_API_KEY: str = ""
 
     # Tool defaults
     NEWS_LOOKBACK_DAYS: int = 7

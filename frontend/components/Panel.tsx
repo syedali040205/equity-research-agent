@@ -14,6 +14,8 @@ export default function Panel({ children, className, style }: Props) {
         background: "var(--bg-panel)",
         border: "1px solid var(--border)",
         padding: 20,
+        minWidth: 0,  /* prevents flex/grid children from overflowing */
+        overflow: "hidden",
         ...style,
       }}
     >

@@ -20,8 +20,9 @@ export default function AgentTrace({ trace, totalMs }: { trace: TraceNode[]; tot
       {/* Gantt timeline */}
       <div style={{ marginBottom: 20 }}>
         {trace.map((node, i) => {
-          const barWidth = Math.max((node.duration_ms / totalMs) * 100, 0.5);
-          const offset = trace.slice(0, i).reduce((s, n) => s + n.duration_ms, 0) / totalMs * 100;
+          const dur = node.duration_ms ?? 0;
+          const barWidth = Math.max((dur / totalMs) * 100, 0.5);
+          const offset = trace.slice(0, i).reduce((s, n) => s + (n.duration_ms ?? 0), 0) / totalMs * 100;
           const hue = NODE_COLORS[i] ?? "var(--amber)";
           return (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -43,7 +44,7 @@ export default function AgentTrace({ trace, totalMs }: { trace: TraceNode[]; tot
                   }}
                 >
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--bg-primary)", fontWeight: 700, whiteSpace: "nowrap" }}>
-                    {node.duration_ms >= 1000 ? `${(node.duration_ms / 1000).toFixed(1)}s` : `${node.duration_ms}ms`}
+                    {dur >= 1000 ? `${(dur / 1000).toFixed(1)}s` : `${dur}ms`}
                   </span>
                 </div>
               </div>
@@ -79,7 +80,7 @@ export default function AgentTrace({ trace, totalMs }: { trace: TraceNode[]; tot
               OUT: {node.output_summary}
             </div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)", textAlign: "right", whiteSpace: "nowrap" }}>
-              {node.duration_ms >= 1000 ? `${(node.duration_ms / 1000).toFixed(2)}s` : `${node.duration_ms}ms`}
+              {node.duration_ms == null ? "—" : node.duration_ms >= 1000 ? `${(node.duration_ms / 1000).toFixed(2)}s` : `${node.duration_ms}ms`}
             </div>
           </div>
         ))}

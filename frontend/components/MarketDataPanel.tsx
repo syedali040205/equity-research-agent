@@ -24,7 +24,8 @@ interface Props {
 
 function fmt(v: string | number | undefined, prefix = ""): string {
   if (v === undefined || v === null) return "—";
-  return `${prefix}${v}`;
+  const n = typeof v === "number" ? parseFloat(v.toFixed(2)) : v;
+  return `${prefix}${n}`;
 }
 
 export default function MarketDataPanel({ data }: Props) {

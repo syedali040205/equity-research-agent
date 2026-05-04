@@ -30,8 +30,9 @@ class ResearchState(TypedDict, total=False):
     # ---- From sentiment (parallel with analyst) ----
     sentiment: dict                 # {score, label, drivers, summary}
 
-    # ---- From analyst ----
+    # ---- From analyst + bear_analyst (run in parallel) ----
     analysis: dict                  # {strengths, risks, narrative, key_metrics, ...}
+    bear_analysis: dict             # {bear_thesis, key_risks, bear_confidence, ...}
 
     # ---- From critic ----
     critique: dict                  # {passed, issues, severity, ...}

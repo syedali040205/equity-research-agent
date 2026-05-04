@@ -1,5 +1,7 @@
 "use client";
 
+
+import { API } from "@/lib/api";
 import { useState, useEffect, useRef } from "react";
 import TopNav from "@/components/TopNav";
 import TickerTape from "@/components/TickerTape";
@@ -17,7 +19,16 @@ import HistoryDrawer from "@/components/HistoryDrawer";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
 import ChatPanel from "@/components/ChatPanel";
 import WatchlistPanel from "@/components/Watchlist";
+import PeerComparison from "@/components/PeerComparison";
+import FilingsPanel from "@/components/FilingsPanel";
+import BullBearPanel from "@/components/BullBearPanel";
+import ScoreRadar from "@/components/ScoreRadar";
+import FinancialSparklines from "@/components/FinancialSparklines";
+import CommandPalette from "@/components/CommandPalette";
+import PortfolioTracker from "@/components/PortfolioTracker";
+import DCFCalculator from "@/components/DCFCalculator";
 import { ResearchResult } from "@/lib/types";
+import { useWatchlist } from "@/components/Watchlist";
 
 type Screen = "hero" | "loading" | "results" | "error";
 
@@ -36,13 +47,57 @@ export default function Home() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [streamNodes, setStreamNodes] = useState<Record<string, any>>({});
   const [activeNode, setActiveNode] = useState<string | null>(null);
+  const [recentTickers, setRecentTickers] = useState<string[]>([]);
   const esRef = useRef<EventSource | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const livePriceRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const watchlist = useWatchlist();
 
   useEffect(() => {
     if (screen === "hero") setTimeout(() => inputRef.current?.focus(), 300);
   }, [screen]);
+
+  // Load recent tickers from localStorage
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("ea_recent") || "[]");
+      setRecentTickers(saved);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName ?? "";
+      if (["INPUT", "TEXTAREA"].includes(tag)) return;
+      if (e.key === "r" || e.key === "R") {
+        if (screen === "results" && ticker) runResearch(ticker);
+      }
+      if (e.key === "h" || e.key === "H") setHistoryOpen(true);
+      if (e.key === "w" || e.key === "W") {
+        if (ticker) watchlist.add(ticker);
+      }
+      if (e.key === "c" || e.key === "C") {
+        if (result) navigator.clipboard?.writeText(`${window.location.origin}/r/${result.research_id}`);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [screen, ticker, result]);
+
+  // Live price polling while on results screen
+  useEffect(() => {
+    if (screen === "results" && ticker) {
+      livePriceRef.current = setInterval(() => {
+        fetch(`${API}/api/tools/price/${ticker}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(p => { if (p && !p.error) setMarketData(fmtMarketData(p)); })
+          .catch(() => {});
+      }, 30_000);
+    }
+    return () => { if (livePriceRef.current) clearInterval(livePriceRef.current); };
+  }, [screen, ticker]);
 
   useEffect(() => {
     if (screen === "loading") {
@@ -90,13 +145,17 @@ export default function Home() {
 
     setTicker(t);
     setScreen("loading");
+    // Track recently researched tickers
+    setRecentTickers(prev => {
+      const next = [t, ...prev.filter(x => x !== t)].slice(0, 5);
+      try { localStorage.setItem("ea_recent", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
     setElapsed(0);
     setResult(null);
     setMarketData(null);
     setStreamNodes({});
     setActiveNode(null);
-
-    const API = "http://localhost:8000";
 
     // Fetch price in parallel (non-blocking)
     fetch(`${API}/api/tools/price/${t}`)
@@ -158,6 +217,7 @@ export default function Home() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <CommandPalette onSearch={runResearch} recentTickers={recentTickers} />
       <TopNav onReset={screen !== "hero" ? reset : undefined} onHistory={() => setHistoryOpen(true)} />
       <HistoryDrawer
         open={historyOpen}
@@ -403,6 +463,20 @@ export default function Home() {
             >
               ⎘ SHARE
             </button>
+            <button
+              onClick={() => window.print()}
+              style={{
+                fontFamily: "var(--font-mono)", fontSize: 10, padding: "5px 12px",
+                background: "transparent", border: "1px solid var(--border)",
+                color: "var(--text-dim)", cursor: "pointer", letterSpacing: "0.08em",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--amber)"; e.currentTarget.style.color = "var(--amber)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)"; }}
+              title="Export to PDF"
+            >
+              ⬇ PDF
+            </button>
             <ConfidenceBadge value={result.confidence} large />
           </div>
 
@@ -413,9 +487,17 @@ export default function Home() {
               gap: 16, padding: 24, maxWidth: 1500, margin: "0 auto",
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <PriceChart ticker={result.ticker} />
               {marketData && <MarketDataPanel data={marketData} />}
+              <ScoreRadar analysis={result.analysis} sentiment={result.sentiment} price={marketData} brief={result.brief} />
+              <PeerComparison ticker={result.ticker} />
+              <DCFCalculator
+                ticker={result.ticker}
+                currentPrice={marketData?.price ?? null}
+                eps={marketData?.eps ?? null}
+              />
+              <BullBearPanel analysis={result.analysis} bearAnalysis={result.bear_analysis} />
               {result.sentiment?.label && (
                 <div style={{ padding: "10px 16px", background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
                   <SentimentBadge sentiment={result.sentiment} />
@@ -434,8 +516,11 @@ export default function Home() {
               )}
               <ChatPanel researchId={result.research_id} />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0, width: 300 }}>
               <WatchlistPanel currentTicker={result.ticker} onResearch={runResearch} />
+              <PortfolioTracker />
+              <FinancialSparklines ticker={result.ticker} />
+              <FilingsPanel ticker={result.ticker} />
               <NewsSidebar />
               <SourcesPanel sourcesCited={result.sources_cited} ticker={result.ticker} />
             </div>

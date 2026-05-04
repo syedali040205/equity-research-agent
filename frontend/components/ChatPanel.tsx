@@ -1,5 +1,7 @@
 "use client";
 
+
+import { API } from "@/lib/api";
 import { useRef, useState } from "react";
 import Panel from "./Panel";
 import SectionLabel from "./SectionLabel";
@@ -22,7 +24,7 @@ export default function ChatPanel({ researchId }: { researchId: string }) {
     setMessages(prev => [...prev, { role: "user", text: q }]);
     setLoading(true);
     try {
-      const r = await fetch(`http://localhost:8000/api/research/${researchId}/chat`, {
+      const r = await fetch(`${API}/api/research/${researchId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),

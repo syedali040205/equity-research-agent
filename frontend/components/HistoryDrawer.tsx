@@ -1,5 +1,7 @@
 "use client";
 
+
+import { API } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 interface BriefRow {
@@ -39,7 +41,7 @@ export default function HistoryDrawer({
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    fetch("http://localhost:8000/api/research/history?limit=30")
+    fetch(`${API}/api/research/history?limit=30`)
       .then((r) => r.json())
       .then((d) => setRows(d.briefs || []))
       .catch(() => {})
@@ -117,7 +119,6 @@ export default function HistoryDrawer({
               style={{
                 display: "block", width: "100%", textAlign: "left",
                 padding: "14px 20px",
-                borderBottom: "1px solid var(--border)",
                 background: "transparent", border: "none",
                 borderBottom: "1px solid var(--border)",
                 cursor: "pointer", transition: "background 0.15s",

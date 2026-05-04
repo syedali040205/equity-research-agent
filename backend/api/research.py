@@ -101,6 +101,7 @@ def get_research(research_id: str):
         "company": raw.get("company", {}),
         "brief": brief,
         "analysis": raw.get("analysis", {}),
+        "bear_analysis": raw.get("bear_analysis", {}),
         "sentiment": raw.get("sentiment", {}),
         "critique": critique,
         "trace": raw.get("trace", []),
@@ -205,7 +206,7 @@ USER QUESTION: {req.question}
 Answer:"""
 
     from agent.llm import make_llm
-    llm = make_llm(num_predict=400)
+    llm = make_llm(num_predict=400, format=None)
     try:
         response = llm.invoke(prompt)
         answer = response.content if hasattr(response, "content") else str(response)

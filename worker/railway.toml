@@ -1,0 +1,8 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Change startCommand to "beat" when deploying the beat scheduler service
+startCommand = "celery -A celery_app worker --loglevel=info --concurrency=2 -O fair -Q realtime,daily,batch,default"
+restartPolicyType = "on-failure"

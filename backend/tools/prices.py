@@ -1,4 +1,4 @@
-"""Price snapshot tool — Yahoo Finance v8 chart (reliable in Docker) + v10 crumb for valuations."""
+"""Price snapshot tool — Yahoo Finance v8 chart + SEC EDGAR for fundamentals."""
 from __future__ import annotations
 
 from typing import Optional
@@ -7,17 +7,12 @@ import requests
 from pydantic import BaseModel
 
 from ._common import normalize_ticker, safe_float, safe_int
+from .edgar import EdgarFundamentals, ticker_to_cik
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
-)
-_CONSENT_URL = "https://finance.yahoo.com/"
-_CRUMB_URL = "https://query1.finance.yahoo.com/v1/test/getcrumb"
-_V10_URL = (
-    "https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}"
-    "?modules=price,summaryDetail,defaultKeyStatistics&crumb={crumb}"
 )
 _CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d"
 
@@ -65,19 +60,15 @@ def get_price_snapshot(ticker: str) -> PriceSnapshot:
 
     sess = _session()
 
-    # --- Primary: v8 chart — always works in Docker, has OHLCV + 52w + name ---
+    # --- Primary: v8 chart — OHLCV + 52w ---
     try:
         r = sess.get(_CHART_URL.format(ticker=norm), timeout=12)
         r.raise_for_status()
-        meta = r.json().get("chart", {}).get("result", [{}])[0].get("meta", {})
+        chart_result = r.json().get("chart", {}).get("result", [{}])[0]
+        meta = chart_result.get("meta", {})
         current = safe_float(meta.get("regularMarketPrice"))
         prev = safe_float(meta.get("chartPreviousClose") or meta.get("previousClose"))
-
-        # Get today's open from last bar in indicators
-        chart_result = r.json().get("chart", {}).get("result", [{}])[0]
-        indicators = chart_result.get("indicators", {}).get("quote", [{}])[0]
-        opens = indicators.get("open") or []
-        today_open = safe_float(opens[-1]) if opens else None
+        opens = chart_result.get("indicators", {}).get("quote", [{}])[0].get("open") or []
 
         snap = PriceSnapshot(
             ticker=norm,
@@ -85,46 +76,40 @@ def get_price_snapshot(ticker: str) -> PriceSnapshot:
             currency=meta.get("currency"),
             current_price=current,
             previous_close=prev,
-            open=today_open,
+            open=safe_float(opens[-1]) if opens else None,
             change_pct_1d=_change_pct(current, prev),
             day_high=safe_float(meta.get("regularMarketDayHigh")),
             day_low=safe_float(meta.get("regularMarketDayLow")),
             week_52_high=safe_float(meta.get("fiftyTwoWeekHigh")),
             week_52_low=safe_float(meta.get("fiftyTwoWeekLow")),
             volume=safe_int(meta.get("regularMarketVolume")),
+            # v8 chart meta sometimes includes these for certain quote types
+            market_cap=safe_int(meta.get("marketCap")),
+            pe_ratio=safe_float(meta.get("trailingPE")),
+            eps=safe_float(meta.get("epsTrailingTwelveMonths")),
         )
     except Exception as exc:
         return PriceSnapshot(ticker=norm, error=str(exc))
 
-    # --- Enrichment: v10 with crumb for pe_ratio, market_cap, beta, dividend ---
+    # --- Enrichment: SEC EDGAR XBRL (no auth, works from Docker) ---
     try:
-        sess.get(_CONSENT_URL, timeout=8)
-        cr = sess.get(_CRUMB_URL, timeout=8)
-        crumb = cr.text.strip() if cr.status_code == 200 and cr.text.strip() else None
-        if crumb:
-            r2 = sess.get(_V10_URL.format(ticker=norm, crumb=crumb), timeout=12)
-            if r2.status_code == 200:
-                result = r2.json().get("quoteSummary", {}).get("result") or []
-                if result:
-                    price_mod = result[0].get("price", {})
-                    detail = result[0].get("summaryDetail", {})
-                    stats = result[0].get("defaultKeyStatistics", {})
-
-                    def raw(d: dict, key: str):
-                        v = d.get(key)
-                        return v.get("raw") if isinstance(v, dict) else v
-
-                    snap.market_cap = safe_int(raw(price_mod, "marketCap"))
-                    snap.avg_volume = safe_int(raw(detail, "averageVolume"))
-                    snap.pe_ratio = safe_float(raw(detail, "trailingPE"))
-                    snap.forward_pe = safe_float(raw(detail, "forwardPE"))
-                    snap.eps = safe_float(raw(price_mod, "epsTrailingTwelveMonths"))
-                    snap.pb_ratio = safe_float(raw(stats, "priceToBook"))
-                    snap.dividend_yield = safe_float(raw(detail, "dividendYield"))
-                    snap.beta = safe_float(raw(detail, "beta"))
-                    if not snap.name:
-                        snap.name = price_mod.get("longName") or price_mod.get("shortName")
+        cik = ticker_to_cik(norm)
+        if cik:
+            edgar = EdgarFundamentals(cik)
+            # EPS from EDGAR (trailing twelve months annual)
+            if snap.eps is None:
+                eps_series = edgar.eps_series
+                if eps_series:
+                    snap.eps = eps_series[0][1]
+            # Market cap = price × shares outstanding
+            if snap.market_cap is None and snap.current_price:
+                shares = edgar.shares_outstanding
+                if shares:
+                    snap.market_cap = safe_int(snap.current_price * shares)
+            # PE = price / EPS
+            if snap.pe_ratio is None and snap.current_price and snap.eps and snap.eps != 0:
+                snap.pe_ratio = round(snap.current_price / snap.eps, 2)
     except Exception:
-        pass  # enrichment is best-effort — snap already has the core data
+        pass
 
     return snap

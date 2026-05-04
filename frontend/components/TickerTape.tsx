@@ -1,62 +1,44 @@
 "use client";
 
+import { API } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 const SYMBOLS = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "JPM", "V", "BRK-B", "XOM", "UNH"];
 
-const FALLBACK: Record<string, { p: string; c: string; up: boolean }> = {
-  AAPL:  { p: "—",  c: "—",     up: true  },
-  MSFT:  { p: "—",  c: "—",     up: true  },
-  NVDA:  { p: "—",  c: "—",     up: true  },
-  GOOGL: { p: "—",  c: "—",     up: false },
-  AMZN:  { p: "—",  c: "—",     up: true  },
-  META:  { p: "—",  c: "—",     up: true  },
-  TSLA:  { p: "—",  c: "—",     up: false },
-  JPM:   { p: "—",  c: "—",     up: true  },
-  V:     { p: "—",  c: "—",     up: true  },
-  "BRK-B": { p: "—", c: "—",   up: true  },
-  XOM:   { p: "—",  c: "—",     up: false },
-  UNH:   { p: "—",  c: "—",     up: true  },
-};
-
 interface TickItem { t: string; p: string; c: string; up: boolean }
 
-async function fetchPrice(ticker: string): Promise<TickItem | null> {
+const placeholder: TickItem[] = SYMBOLS.map(s => ({
+  t: s === "BRK-B" ? "BRK.B" : s,
+  p: "—",
+  c: "—",
+  up: true,
+}));
+
+async function fetchAll(): Promise<TickItem[]> {
   try {
-    const r = await fetch(`http://localhost:8000/api/tools/price/${ticker}`, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return null;
+    const r = await fetch(
+      `${API}/api/tools/prices?symbols=${SYMBOLS.join(",")}`,
+      { signal: AbortSignal.timeout(20000) },
+    );
+    if (!r.ok) return placeholder;
     const d = await r.json();
-    if (d.error || d.current_price == null) return null;
-    const pct = d.change_pct_1d ?? 0;
-    return {
-      t: ticker === "BRK-B" ? "BRK.B" : ticker,
-      p: `$${d.current_price.toFixed(2)}`,
-      c: `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`,
-      up: pct >= 0,
-    };
+    return (d.prices ?? []).map((p: any) => ({
+      t: p.ticker === "BRK-B" ? "BRK.B" : p.ticker,
+      p: p.price != null ? `$${p.price.toFixed(2)}` : "—",
+      c: p.change_pct != null ? `${p.change_pct >= 0 ? "+" : ""}${p.change_pct.toFixed(2)}%` : "—",
+      up: (p.change_pct ?? 0) >= 0,
+    }));
   } catch {
-    return null;
+    return placeholder;
   }
 }
 
 export default function TickerTape() {
-  const [items, setItems] = useState<TickItem[]>(
-    SYMBOLS.map((s) => ({ t: s === "BRK-B" ? "BRK.B" : s, ...FALLBACK[s] }))
-  );
-
-  async function refresh() {
-    const results = await Promise.allSettled(SYMBOLS.map(fetchPrice));
-    setItems((prev) =>
-      prev.map((item, i) => {
-        const r = results[i];
-        return r.status === "fulfilled" && r.value ? r.value : item;
-      })
-    );
-  }
+  const [items, setItems] = useState<TickItem[]>(placeholder);
 
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 60_000);
+    fetchAll().then(setItems);
+    const id = setInterval(() => fetchAll().then(setItems), 60_000);
     return () => clearInterval(id);
   }, []);
 

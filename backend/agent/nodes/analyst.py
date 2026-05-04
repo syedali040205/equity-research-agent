@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from agent.llm import invoke_json, make_llm
+from agent.llm import invoke_json, make_llm_quality as make_llm
 from agent.observability import log_agent_call
 from agent.prompts import ANALYST_PROMPT
 from agent.state import ResearchState
@@ -18,25 +18,18 @@ def _build_raw_data(state: ResearchState) -> str:
     # Only the most recent period to keep prompt small
     latest_fin = (fin.get("periods") or [{}])[0] if isinstance(fin.get("periods"), list) else {}
 
+    def _nonnull(d: dict, keys: tuple) -> dict:
+        return {k: d.get(k) for k in keys if d.get(k) is not None}
+
     payload = {
-        "company": {k: company.get(k) for k in ("ticker", "name", "sector", "industry")},
-        "price": {k: price.get(k) for k in (
-            "current_price", "market_cap", "pe_ratio", "forward_pe",
-            "week_52_high", "week_52_low", "beta",
-        )},
-        "latest_financials": {k: latest_fin.get(k) for k in (
-            "period_end", "revenue", "net_income", "operating_income",
-            "free_cash_flow", "total_debt", "total_equity",
-        )},
-        "derived_metrics": {k: metrics.get(k) for k in (
-            "revenue_yoy_growth_pct", "gross_margin_pct",
-            "operating_margin_pct", "net_margin_pct",
-            "debt_to_equity", "fcf_margin_pct",
-        )},
+        "company": _nonnull(company, ("ticker", "name", "sector", "industry")),
+        "price": _nonnull(price, ("current_price", "market_cap", "pe_ratio", "forward_pe", "week_52_high", "week_52_low", "beta")),
+        "financials": _nonnull(latest_fin, ("period_end", "revenue", "net_income", "operating_income", "free_cash_flow", "total_debt", "total_equity")) if latest_fin else {},
+        "metrics": _nonnull(metrics, ("revenue_yoy_growth_pct", "gross_margin_pct", "operating_margin_pct", "net_margin_pct", "debt_to_equity", "fcf_margin_pct")),
         "news_count": len(state.get("news") or []),
         "filings_count": len(state.get("filings") or []),
     }
-    return json.dumps(payload, default=str, indent=2)
+    return json.dumps(payload, default=str)
 
 
 def analyst(state: ResearchState) -> dict:

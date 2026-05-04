@@ -1,5 +1,7 @@
 "use client";
 
+
+import { API } from "@/lib/api";
 import { useEffect, useRef, useState } from "react";
 import Panel from "./Panel";
 import SectionLabel from "./SectionLabel";
@@ -28,15 +30,13 @@ export default function NewsSidebar() {
 
   async function fetchNews() {
     try {
-      const r = await fetch("http://localhost:8000/api/tools/news/live?limit=30&hours=48", {
+      const r = await fetch(`${API}/api/tools/news/live?limit=30&hours=48`, {
         signal: AbortSignal.timeout(8000),
       });
       if (!r.ok) return;
       const d = await r.json();
-      if (d.articles?.length) {
-        setArticles(d.articles);
-        setLastUpdate(new Date());
-      }
+      setArticles(d.articles ?? []);
+      setLastUpdate(new Date());
     } catch {
       // silent — sidebar is non-critical
     }
@@ -55,7 +55,7 @@ export default function NewsSidebar() {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ width: 5, height: 5, background: "var(--green)", borderRadius: "50%", animation: "pulse 2s infinite" }} />
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.1em" }}>
-            {lastUpdate ? `UPDATED ${timeAgo(lastUpdate.toISOString())}` : "LOADING…"}
+            {lastUpdate ? `UPDATED ${timeAgo(lastUpdate.toISOString())}` : "FETCHING…"}
           </span>
         </div>
       </div>

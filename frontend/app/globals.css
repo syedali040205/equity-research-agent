@@ -78,6 +78,42 @@ body::after {
   animation: shimmer 1.5s infinite linear;
 }
 
+@media print {
+  @page { margin: 1.2cm; size: A4; }
+
+  body { background: #fff !important; color: #111 !important; font-size: 11pt; }
+
+  /* Hide interactive / chrome elements */
+  nav, [data-noprint], .animate-blink, button:not([data-printable]) { display: none !important; }
+
+  /* Force readable colors */
+  * {
+    color: #111 !important;
+    background: transparent !important;
+    border-color: #ccc !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Keep panels visible with light borders */
+  [class*="Panel"], [style*="bg-secondary"], [style*="bg-panel"] {
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 12pt;
+  }
+
+  /* Recharts: make SVG text dark */
+  svg text { fill: #333 !important; }
+  svg path, svg line { stroke: #999 !important; }
+  svg .recharts-area-area { fill: rgba(0,0,0,0.05) !important; }
+
+  a { color: #333 !important; text-decoration: none; }
+
+  /* Page breaks */
+  h1, h2, h3 { page-break-after: avoid; }
+}
+
 .fade-up   { animation: fadeUp 0.4s ease forwards; }
 .fade-up-1 { animation: fadeUp 0.4s 0.05s ease both; }
 .fade-up-2 { animation: fadeUp 0.4s 0.10s ease both; }

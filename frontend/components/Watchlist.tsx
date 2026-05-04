@@ -1,5 +1,7 @@
 "use client";
 
+
+import { API } from "@/lib/api";
 import { useEffect, useState } from "react";
 import Panel from "./Panel";
 import SectionLabel from "./SectionLabel";
@@ -45,7 +47,7 @@ export default function WatchlistPanel({ currentTicker, onResearch }: WatchlistP
   useEffect(() => {
     if (!list.length) return;
     list.forEach(ticker => {
-      fetch(`http://localhost:8000/api/tools/price/${ticker}`)
+      fetch(`${API}/api/tools/price/${ticker}`)
         .then(r => r.json())
         .then(d => {
           if (d.current_price != null) {
