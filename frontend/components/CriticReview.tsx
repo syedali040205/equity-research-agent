@@ -62,23 +62,25 @@ export default function CriticReview({ critique }: { critique: Critique & { erro
         ))}
       </div>
 
-      <div
-        style={{
-          padding: "10px 14px",
-          background: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-          borderLeft: "3px solid var(--green)",
-          fontFamily: "var(--font-sans)",
-          fontSize: 12,
-          color: "var(--text-secondary)",
-          lineHeight: 1.55,
-        }}
-      >
-        <strong style={{ color: "var(--green)", fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.1em" }}>
-          FINAL VERDICT{" "}
-        </strong>
-        {critique.recommendation}
-      </div>
+      {critique.recommendation && (
+        <div
+          style={{
+            padding: "10px 14px",
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+            borderLeft: "3px solid var(--green)",
+            fontFamily: "var(--font-sans)",
+            fontSize: 12,
+            color: "var(--text-secondary)",
+            lineHeight: 1.55,
+          }}
+        >
+          <strong style={{ color: "var(--green)", fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.1em" }}>
+            FINAL VERDICT{" "}
+          </strong>
+          {critique.recommendation}
+        </div>
+      )}
     </Panel>
   );
 }

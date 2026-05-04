@@ -29,7 +29,7 @@ def critic(state: ResearchState) -> dict:
         # Critic failure = treat as passed (don't block the brief on critic flakiness)
         critique = {"passed": True, "confidence": 50,
                     "issues": [], "verified_count": 0,
-                    "critic_error": str(exc)}
+                    "error": str(exc)}
         telem = {"duration_ms": None}
         ok, err = False, str(exc)
 
