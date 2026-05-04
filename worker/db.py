@@ -125,6 +125,44 @@ CREATE INDEX IF NOT EXISTS ix_etl_runs_ticker_time
     ON etl_runs (ticker, run_at DESC);
 CREATE INDEX IF NOT EXISTS ix_etl_runs_status_time
     ON etl_runs (status, run_at DESC);
+
+
+-- Agent observability: one row per LLM call inside the multi-agent graph.
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id              BIGSERIAL    PRIMARY KEY,
+    run_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    research_id     UUID         NOT NULL,             -- groups all calls for one brief
+    ticker          VARCHAR(12),
+    node            VARCHAR(32)  NOT NULL,             -- 'analyst' | 'critic' | 'writer' | 'researcher_*'
+    model           VARCHAR(64),
+    success         BOOLEAN      NOT NULL DEFAULT TRUE,
+    duration_ms     INTEGER,
+    prompt_tokens   INTEGER,
+    completion_tokens INTEGER,
+    retry_count     INTEGER      NOT NULL DEFAULT 0,
+    error           TEXT,
+    metadata        JSONB
+);
+
+CREATE INDEX IF NOT EXISTS ix_agent_runs_research ON agent_runs (research_id);
+CREATE INDEX IF NOT EXISTS ix_agent_runs_ticker_time ON agent_runs (ticker, run_at DESC);
+
+
+-- Generated briefs (the final output of one full agent run).
+CREATE TABLE IF NOT EXISTS briefs (
+    id              UUID         PRIMARY KEY,
+    ticker          VARCHAR(12)  NOT NULL,
+    generated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    model           VARCHAR(64),
+    duration_ms     INTEGER,
+    retry_count     INTEGER      NOT NULL DEFAULT 0,
+    confidence      NUMERIC(5,2),
+    sources_cited   INTEGER,
+    brief           JSONB        NOT NULL,             -- full structured brief
+    raw_state       JSONB                              -- final ResearchState (for replay/debug)
+);
+
+CREATE INDEX IF NOT EXISTS ix_briefs_ticker_time ON briefs (ticker, generated_at DESC);
 """
 
 
@@ -142,7 +180,8 @@ def status() -> dict:
         cur.execute("SELECT version()")
         out["postgres"] = cur.fetchone()["version"].split(",")[0]
 
-        for table in ("companies", "news_articles", "sec_filings", "etl_runs"):
+        for table in ("companies", "news_articles", "sec_filings", "etl_runs",
+                      "agent_runs", "briefs"):
             cur.execute(f"SELECT COUNT(*) AS n FROM {table}")
             out[table] = cur.fetchone()["n"]
     return out

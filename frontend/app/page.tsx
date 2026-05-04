@@ -15,6 +15,8 @@ import PriceChart from "@/components/PriceChart";
 import SentimentBadge from "@/components/SentimentBadge";
 import HistoryDrawer from "@/components/HistoryDrawer";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
+import ChatPanel from "@/components/ChatPanel";
+import WatchlistPanel from "@/components/Watchlist";
 import { ResearchResult } from "@/lib/types";
 
 type Screen = "hero" | "loading" | "results" | "error";
@@ -32,6 +34,9 @@ export default function Home() {
   const [marketData, setMarketData] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [streamNodes, setStreamNodes] = useState<Record<string, any>>({});
+  const [activeNode, setActiveNode] = useState<string | null>(null);
+  const esRef = useRef<EventSource | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -49,80 +54,93 @@ export default function Home() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [screen]);
 
-  async function runResearch(sym: string) {
+  function fmtMarketData(p: any) {
+    const fmtCap = (v: number | null | undefined): string | undefined => {
+      if (v == null) return undefined;
+      if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+      if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+      if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+      return `$${v}`;
+    };
+    const fmtVol = (v: number | null | undefined): string | undefined => {
+      if (v == null) return undefined;
+      if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+      if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+      if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
+      return String(v);
+    };
+    return {
+      ticker: p.ticker, price: p.current_price, change_pct: p.change_pct_1d ?? 0,
+      open: p.open, high: p.day_high, low: p.day_low,
+      week52_high: p.week_52_high, week52_low: p.week_52_low,
+      market_cap: fmtCap(p.market_cap), volume: fmtVol(p.volume),
+      pe_ratio: p.pe_ratio, eps: p.eps,
+      dividend_yield: p.dividend_yield != null
+        ? `${(p.dividend_yield < 1 ? p.dividend_yield * 100 : p.dividend_yield).toFixed(2)}%`
+        : undefined,
+    };
+  }
+
+  function runResearch(sym: string) {
     const t = sym.trim().toUpperCase();
     if (!t) return;
+
+    // Close any existing stream
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+
     setTicker(t);
     setScreen("loading");
     setElapsed(0);
     setResult(null);
     setMarketData(null);
+    setStreamNodes({});
+    setActiveNode(null);
 
     const API = "http://localhost:8000";
 
-    try {
-      const [resResp, priceResp] = await Promise.allSettled([
-        fetch(`${API}/api/research`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticker: t }),
-          signal: AbortSignal.timeout(360_000),
-        }),
-        fetch(`${API}/api/tools/price/${t}`),
-      ]);
+    // Fetch price in parallel (non-blocking)
+    fetch(`${API}/api/tools/price/${t}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(p => { if (p && !p.error) setMarketData(fmtMarketData(p)); })
+      .catch(() => {});
 
-      if (resResp.status === "fulfilled" && resResp.value.ok) {
-        const data: ResearchResult = await resResp.value.json();
-        setResult(data);
-      } else {
-        const errText = resResp.status === "fulfilled"
-          ? await resResp.value.text()
-          : (resResp.reason as Error)?.message ?? "Unknown error";
-        setErrorMsg(errText);
-        setScreen("error");
-        return;
-      }
+    // Stream research via SSE
+    const es = new EventSource(`${API}/api/research/stream?ticker=${t}`);
+    esRef.current = es;
 
-      if (priceResp.status === "fulfilled" && priceResp.value.ok) {
-        const p = await priceResp.value.json();
-        const fmtCap = (v: number | null | undefined): string | undefined => {
-          if (v == null) return undefined;
-          if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
-          if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-          if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
-          return `$${v}`;
-        };
-        const fmtVol = (v: number | null | undefined): string | undefined => {
-          if (v == null) return undefined;
-          if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-          if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-          if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-          return String(v);
-        };
-        setMarketData({
-          ticker: p.ticker,
-          price: p.current_price,
-          change_pct: p.change_pct_1d ?? 0,
-          open: p.open,
-          high: p.day_high,
-          low: p.day_low,
-          week52_high: p.week_52_high,
-          week52_low: p.week_52_low,
-          market_cap: fmtCap(p.market_cap),
-          volume: fmtVol(p.volume),
-          pe_ratio: p.pe_ratio,
-          eps: p.eps,
-          dividend_yield: p.dividend_yield != null
-            ? `${(p.dividend_yield < 1 ? p.dividend_yield * 100 : p.dividend_yield).toFixed(2)}%`
-            : undefined,
-        });
-      }
+    es.onmessage = (e) => {
+      if (e.data === "[DONE]") { es.close(); return; }
+      try {
+        const event = JSON.parse(e.data);
 
-      setScreen("results");
-    } catch (e) {
-      setErrorMsg(String(e));
+        if (event.type === "node_complete") {
+          setActiveNode(event.node);
+          setStreamNodes(prev => ({ ...prev, [event.node]: event }));
+        }
+
+        if (event.type === "complete") {
+          es.close();
+          esRef.current = null;
+          setResult(event.result);
+          setActiveNode(null);
+          setScreen("results");
+        }
+
+        if (event.type === "error") {
+          es.close();
+          esRef.current = null;
+          setErrorMsg(event.message || "Stream error");
+          setScreen("error");
+        }
+      } catch { /* ignore parse errors */ }
+    };
+
+    es.onerror = () => {
+      es.close();
+      esRef.current = null;
+      setErrorMsg("Connection to research server lost");
       setScreen("error");
-    }
+    };
   }
 
   function reset() {
@@ -322,7 +340,7 @@ export default function Home() {
       )}
 
       {/* ── LOADING ── */}
-      {screen === "loading" && <LoadingPage ticker={ticker} elapsed={elapsed} />}
+      {screen === "loading" && <LoadingPage ticker={ticker} elapsed={elapsed} streamNodes={streamNodes} activeNode={activeNode} />}
 
       {/* ── ERROR ── */}
       {screen === "error" && (
@@ -371,6 +389,20 @@ export default function Home() {
               </div>
             </div>
             <div style={{ flex: 1 }} />
+            <button
+              onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/r/${result.research_id}`); }}
+              style={{
+                fontFamily: "var(--font-mono)", fontSize: 10, padding: "5px 12px",
+                background: "transparent", border: "1px solid var(--border)",
+                color: "var(--text-dim)", cursor: "pointer", letterSpacing: "0.08em",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--cyan)"; e.currentTarget.style.color = "var(--cyan)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)"; }}
+              title="Copy share link"
+            >
+              ⎘ SHARE
+            </button>
             <ConfidenceBadge value={result.confidence} large />
           </div>
 
@@ -400,8 +432,10 @@ export default function Home() {
               {result.trace?.length > 0 && (
                 <AgentTrace trace={result.trace} totalMs={result.duration_ms} />
               )}
+              <ChatPanel researchId={result.research_id} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <WatchlistPanel currentTicker={result.ticker} onResearch={runResearch} />
               <NewsSidebar />
               <SourcesPanel sourcesCited={result.sources_cited} ticker={result.ticker} />
             </div>
